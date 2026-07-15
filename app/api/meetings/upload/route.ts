@@ -7,6 +7,11 @@ import { AssemblyAI } from 'assemblyai';
 import OpenAI from 'openai';
 import { Resend } from 'resend';
 import { adminDb } from '@/lib/firebase/admin';
+// After the imports, add this check
+if (!adminDb) {
+  console.error('❌ Firebase Admin is not available');
+  throw new Error('Firebase Admin is not initialized');
+}
 
 // Check if API keys are available
 const assemblyaiApiKey = process.env.ASSEMBLYAI_API_KEY;

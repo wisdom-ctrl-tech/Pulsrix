@@ -1,12 +1,8 @@
-// Use the modular import approach
-import { initializeApp, cert, getApps } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
-import { getAuth } from 'firebase-admin/auth';
+import admin from 'firebase-admin';
 
-// Check if Firebase Admin is already initialized
-let adminApp;
-let adminDb;
-let adminAuth;
+// Initialize Firebase Admin
+let adminDb: admin.firestore.Firestore;
+let adminAuth: admin.auth.Auth;
 
 try {
   // Check if all required environment variables are present
@@ -28,9 +24,9 @@ try {
     .replace(/^"|"$/g, '');
 
   // Check if already initialized
-  if (getApps().length === 0) {
-    adminApp = initializeApp({
-      credential: cert({
+  if (!admin.apps || admin.apps.length === 0) {
+    admin.initializeApp({
+      credential: admin.credential.cert({
         projectId: projectId.trim(),
         clientEmail: clientEmail.trim(),
         privateKey: privateKey,
@@ -38,15 +34,15 @@ try {
     });
     console.log('✅ Firebase Admin initialized successfully');
   } else {
-    adminApp = getApps()[0];
     console.log('✅ Firebase Admin already initialized');
   }
 
-  adminDb = getFirestore(adminApp);
-  adminAuth = getAuth(adminApp);
+  adminDb = admin.firestore();
+  adminAuth = admin.auth();
 
 } catch (error) {
   console.error('❌ Firebase Admin initialization error:', error);
+  // Re-throw so the app fails if Firebase Admin can't initialize
   throw error;
 }
 
