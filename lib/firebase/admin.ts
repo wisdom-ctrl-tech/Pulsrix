@@ -1,7 +1,7 @@
-import admin from 'firebase-admin';
+import * as admin from 'firebase-admin';
 
 // Initialize Firebase Admin
-let adminDb: admin.firestore.Firestore;
+let adminDb: FirebaseFirestore.Firestore;
 let adminAuth: admin.auth.Auth;
 
 try {
