@@ -1,30 +1,27 @@
-import admin from 'firebase-admin';
+import * as admin from 'firebase-admin';
 
 // Initialize Firebase Admin
 let adminDb: any;
 let adminAuth: any;
 
-// Check if Firebase Admin is already initialized
-if (!admin.apps || admin.apps.length === 0) {
-  try {
-    const projectId = process.env.FIREBASE_PROJECT_ID;
-    const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-    let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+try {
+  // Check if all required environment variables are present
+  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  let privateKey = process.env.FIREBASE_PRIVATE_KEY;
 
-    console.log('🔑 Firebase Admin environment check:');
-    console.log('  - Project ID:', projectId);
-    console.log('  - Client Email:', clientEmail);
-    console.log('  - Private Key exists:', !!privateKey);
+  if (!projectId || !clientEmail || !privateKey) {
+    console.error('❌ Missing Firebase Admin environment variables');
+    throw new Error('Firebase Admin environment variables are missing');
+  }
 
-    if (!projectId || !clientEmail || !privateKey) {
-      throw new Error('Missing Firebase Admin environment variables');
-    }
+  // Clean the private key (remove quotes and handle newlines)
+  privateKey = privateKey
+    .replace(/\\n/g, '\n')
+    .replace(/^"|"$/g, '');
 
-    // Clean the private key
-    privateKey = privateKey
-      .replace(/\\n/g, '\n')
-      .replace(/^"|"$/g, '');
-
+  // Check if already initialized (using getApps() instead of apps)
+  if (admin.getApps().length === 0) {
     admin.initializeApp({
       credential: admin.credential.cert({
         projectId: projectId.trim(),
@@ -33,15 +30,16 @@ if (!admin.apps || admin.apps.length === 0) {
       }),
     });
     console.log('✅ Firebase Admin initialized successfully');
-  } catch (error) {
-    console.error('❌ Firebase Admin initialization error:', error);
-    throw error;
+  } else {
+    console.log('✅ Firebase Admin already initialized');
   }
-} else {
-  console.log('✅ Firebase Admin already initialized');
-}
 
-adminDb = admin.firestore();
-adminAuth = admin.auth();
+  adminDb = admin.firestore();
+  adminAuth = admin.auth();
+
+} catch (error) {
+  console.error('❌ Firebase Admin initialization error:', error);
+  throw error;
+}
 
 export { adminDb, adminAuth };
