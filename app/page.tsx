@@ -145,7 +145,7 @@ export default function HomePage() {
           transition={{ delay: 1.2, duration: 0.5 }}
           className="mt-12 text-sm text-gray-400 dark:text-gray-600"
         >
-          © 2026 Pulsrix. Built with ❤️ for better meetings.
+          © 2026 Pulsrix. Built with love for better meetings.
         </motion.p>
       </div>
     </div>
