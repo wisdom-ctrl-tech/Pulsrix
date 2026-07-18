@@ -6,7 +6,7 @@ import { randomUUID } from 'crypto';
 import { AssemblyAI } from 'assemblyai';
 import OpenAI from 'openai';
 import { Resend } from 'resend';
-import admin from 'firebase-admin';
+import * as admin from 'firebase-admin';
 
 // ============================================================
 // 1. INITIALIZE FIREBASE ADMIN
@@ -25,11 +25,11 @@ try {
   console.log('  - Private Key:', privateKey ? '✅ Present' : '❌ Missing');
 
   if (projectId && clientEmail && privateKey) {
-    privateKey = privateKey
-      .replace(/\\n/g, '\n')
-      .replace(/^"|"$/g, '');
+    // Clean the private key - this must be one line!
+    privateKey = privateKey.replace(/\\n/g, '\n').replace(/^"|"$/g, '');
 
-    if (!admin.apps || admin.apps.length === 0) {
+    // Use getApps() to check if already initialized
+    if (admin.getApps().length === 0) {
       admin.initializeApp({
         credential: admin.credential.cert({
           projectId: projectId.trim(),
@@ -38,6 +38,8 @@ try {
         }),
       });
       console.log('✅ Firebase Admin initialized');
+    } else {
+      console.log('✅ Firebase Admin already initialized');
     }
 
     adminDb = admin.firestore();
@@ -111,18 +113,14 @@ export async function POST(request: NextRequest) {
 
     console.log('📁 File size:', (file.size / 1024 / 1024).toFixed(2), 'MB');
 
-    // ============================================================
-    // 5. SAVE FILE TEMPORARILY
-    // ============================================================
+    // Save file temporarily
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
     const tempPath = join(tmpdir(), `${randomUUID()}-${file.name}`);
     await writeFile(tempPath, buffer);
     console.log('💾 File saved to:', tempPath);
 
-    // ============================================================
-    // 6. UPLOAD TO ASSEMBLYAI
-    // ============================================================
+    // Upload to AssemblyAI
     console.log('🎙️ Uploading to AssemblyAI...');
     const transcript = await assemblyai.transcripts.create({
       audio_url: tempPath,
@@ -130,9 +128,7 @@ export async function POST(request: NextRequest) {
     });
     console.log('📝 Transcript ID:', transcript.id);
 
-    // ============================================================
-    // 7. WAIT FOR TRANSCRIPTION
-    // ============================================================
+    // Wait for transcription
     let transcriptResult: any = null;
     let attempts = 0;
     const maxAttempts = 60;
@@ -156,9 +152,7 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ Transcription complete! Length:', transcriptResult.text?.length || 0);
 
-    // ============================================================
-    // 8. GENERATE SUMMARY WITH OPENAI
-    // ============================================================
+    // Generate summary with OpenAI
     console.log('🤖 Generating summary with OpenAI...');
     const completion = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
@@ -184,9 +178,7 @@ export async function POST(request: NextRequest) {
     const summary = completion.choices[0]?.message?.content || '';
     console.log('✅ Summary generated! Length:', summary.length);
 
-    // ============================================================
-    // 9. SAVE TO FIREBASE
-    // ============================================================
+    // Save to Firebase
     console.log('💾 Saving to Firebase...');
     const meetingData = {
       userId: email,
@@ -202,9 +194,7 @@ export async function POST(request: NextRequest) {
     const docRef = await adminDb.collection('meetings').add(meetingData);
     console.log('📄 Meeting saved with ID:', docRef.id);
 
-    // ============================================================
-    // 10. SEND EMAIL
-    // ============================================================
+    // Send email
     console.log('📧 Sending email...');
     await resend.emails.send({
       from: 'onboarding@resend.dev',
@@ -223,15 +213,11 @@ export async function POST(request: NextRequest) {
     });
     console.log('✅ Email sent!');
 
-    // ============================================================
-    // 11. CLEAN UP TEMP FILE
-    // ============================================================
+    // Clean up temp file
     await unlink(tempPath).catch(() => {});
     console.log('🧹 Temp file cleaned up');
 
-    // ============================================================
-    // 12. RETURN SUCCESS
-    // ============================================================
+    // Return success
     return NextResponse.json({
       success: true,
       meetingId: docRef.id,
