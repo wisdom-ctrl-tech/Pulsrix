@@ -11,13 +11,18 @@ import admin from 'firebase-admin';
 // ============================================================
 // 1. INITIALIZE FIREBASE ADMIN
 // ============================================================
-let adminDb: FirebaseFirestore.Firestore | null = null;
-let adminAuth: admin.auth.Auth | null = null;
+let adminDb: any = null;
+let adminAuth: any = null;
 
 try {
   const projectId = process.env.FIREBASE_PROJECT_ID;
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
   let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+
+  console.log('🔑 Firebase Admin environment check:');
+  console.log('  - Project ID:', projectId ? '✅ Present' : '❌ Missing');
+  console.log('  - Client Email:', clientEmail ? '✅ Present' : '❌ Missing');
+  console.log('  - Private Key:', privateKey ? '✅ Present' : '❌ Missing');
 
   if (projectId && clientEmail && privateKey) {
     privateKey = privateKey
@@ -74,8 +79,9 @@ export async function POST(request: NextRequest) {
     console.log('📥 Upload request received');
 
     if (!adminDb) {
+      console.error('❌ Firebase Admin is not available');
       return NextResponse.json(
-        { error: 'Firebase Admin is not initialized.' },
+        { error: 'Firebase Admin is not initialized. Check environment variables.' },
         { status: 500 }
       );
     }
@@ -84,6 +90,10 @@ export async function POST(request: NextRequest) {
     const file = formData.get('file') as File | null;
     const meetingName = formData.get('meetingName') as string | null;
     const email = formData.get('email') as string | null;
+
+    console.log('📝 Meeting:', meetingName);
+    console.log('📧 Email:', email);
+    console.log('📁 File:', file ? file.name : 'No file');
 
     if (!file || !meetingName || !email) {
       return NextResponse.json(
@@ -99,18 +109,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Save file
+    console.log('📁 File size:', (file.size / 1024 / 1024).toFixed(2), 'MB');
+
+    // ============================================================
+    // 5. SAVE FILE TEMPORARILY
+    // ============================================================
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
     const tempPath = join(tmpdir(), `${randomUUID()}-${file.name}`);
     await writeFile(tempPath, buffer);
+    console.log('💾 File saved to:', tempPath);
 
-    // Transcribe with AssemblyAI
+    // ============================================================
+    // 6. UPLOAD TO ASSEMBLYAI
+    // ============================================================
+    console.log('🎙️ Uploading to AssemblyAI...');
     const transcript = await assemblyai.transcripts.create({
       audio_url: tempPath,
       language_code: 'en',
     });
+    console.log('📝 Transcript ID:', transcript.id);
 
+    // ============================================================
+    // 7. WAIT FOR TRANSCRIPTION
+    // ============================================================
     let transcriptResult: any = null;
     let attempts = 0;
     const maxAttempts = 60;
@@ -123,6 +145,7 @@ export async function POST(request: NextRequest) {
       } else if (status.status === 'error') {
         throw new Error('Transcription failed: ' + status.error);
       }
+      console.log(`⏳ Waiting for transcription... (${attempts + 1}/${maxAttempts})`);
       await new Promise(resolve => setTimeout(resolve, 5000));
       attempts++;
     }
@@ -131,22 +154,27 @@ export async function POST(request: NextRequest) {
       throw new Error('Transcription timed out');
     }
 
-    // Generate summary with OpenAI
+    console.log('✅ Transcription complete! Length:', transcriptResult.text?.length || 0);
+
+    // ============================================================
+    // 8. GENERATE SUMMARY WITH OPENAI
+    // ============================================================
+    console.log('🤖 Generating summary with OpenAI...');
     const completion = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
       messages: [
         {
           role: 'system',
-          content: `You are a meeting summarizer. Create a structured summary.
-            Format:
-            1. Key Discussion Points
-            2. Decisions Made
-            3. Action Items
-            4. Next Steps`,
+          content: `You are a meeting summarizer. Create a structured summary of the meeting transcript.
+            Format your response as:
+            1. Key Discussion Points (bulleted list)
+            2. Decisions Made (bulleted list)
+            3. Action Items (bulleted list with assignees if mentioned)
+            4. Next Steps (if mentioned)`,
         },
         {
           role: 'user',
-          content: `Meeting: ${meetingName}\n\nTranscript:\n${transcriptResult.text}`,
+          content: `Meeting name: ${meetingName}\n\nTranscript:\n${transcriptResult.text}`,
         },
       ],
       temperature: 0.7,
@@ -154,8 +182,12 @@ export async function POST(request: NextRequest) {
     });
 
     const summary = completion.choices[0]?.message?.content || '';
+    console.log('✅ Summary generated! Length:', summary.length);
 
-    // Save to Firebase
+    // ============================================================
+    // 9. SAVE TO FIREBASE
+    // ============================================================
+    console.log('💾 Saving to Firebase...');
     const meetingData = {
       userId: email,
       meetingName,
@@ -168,8 +200,12 @@ export async function POST(request: NextRequest) {
     };
 
     const docRef = await adminDb.collection('meetings').add(meetingData);
+    console.log('📄 Meeting saved with ID:', docRef.id);
 
-    // Send email
+    // ============================================================
+    // 10. SEND EMAIL
+    // ============================================================
+    console.log('📧 Sending email...');
     await resend.emails.send({
       from: 'onboarding@resend.dev',
       to: email,
@@ -185,10 +221,17 @@ export async function POST(request: NextRequest) {
         </p>
       `,
     });
+    console.log('✅ Email sent!');
 
-    // Clean up
+    // ============================================================
+    // 11. CLEAN UP TEMP FILE
+    // ============================================================
     await unlink(tempPath).catch(() => {});
+    console.log('🧹 Temp file cleaned up');
 
+    // ============================================================
+    // 12. RETURN SUCCESS
+    // ============================================================
     return NextResponse.json({
       success: true,
       meetingId: docRef.id,
@@ -197,6 +240,8 @@ export async function POST(request: NextRequest) {
 
   } catch (error: any) {
     console.error('❌ Error:', error);
+    console.error('❌ Error message:', error.message);
+
     return NextResponse.json(
       { error: error.message || 'Processing failed' },
       { status: 500 }
