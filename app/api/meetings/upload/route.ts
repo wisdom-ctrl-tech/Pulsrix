@@ -6,7 +6,10 @@ import { randomUUID } from 'crypto';
 import { AssemblyAI } from 'assemblyai';
 import OpenAI from 'openai';
 import { Resend } from 'resend';
-import * as admin from 'firebase-admin';
+
+// ✅ Use require for firebase-admin to avoid TypeScript issues
+// @ts-ignore
+const admin = require('firebase-admin');
 
 // ============================================================
 // 1. INITIALIZE FIREBASE ADMIN
@@ -25,11 +28,11 @@ try {
   console.log('  - Private Key:', privateKey ? '✅ Present' : '❌ Missing');
 
   if (projectId && clientEmail && privateKey) {
-    // Clean the private key - this must be one line!
+    // Clean the private key
     privateKey = privateKey.replace(/\\n/g, '\n').replace(/^"|"$/g, '');
 
-    // Use getApps() to check if already initialized
-    if (admin.getApps().length === 0) {
+    // Check if already initialized (using `apps` for CommonJS)
+    if (!admin.apps || admin.apps.length === 0) {
       admin.initializeApp({
         credential: admin.credential.cert({
           projectId: projectId.trim(),
